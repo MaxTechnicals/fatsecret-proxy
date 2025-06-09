@@ -48,7 +48,11 @@ app.get("/macros", async (req, res) => {
       }
     });
 
-    const foodId = searchRes.data.foods.food[0].food_id;
+    if (!searchRes.data.foods || !searchRes.data.foods.food || searchRes.data.foods.food.length === 0) {
+  return res.status(404).json({ error: "No food found for query: " + query });
+}
+
+const foodId = searchRes.data.foods.food[0].food_id;
 
     const detailRes = await axios.get("https://platform.fatsecret.com/rest/server.api", {
       headers: { Authorization: `Bearer ${token}` },
