@@ -76,7 +76,17 @@ app.get("/macros", async (req, res) => {
       carbs: parseFloat(nutrients.carbohydrate)
     });
 
-  } catch (err) {
+    } catch (err) {
+    try {
+      const token = await getAccessToken();
+      const suggestions = await getSuggestions(token, query);
+      if (suggestions.length > 0) {
+        return res.status(404).json({ error: "No exact match", suggestions });
+      }
+    } catch (suggestionError) {
+      console.error("Suggestion fetch failed:", suggestionError.message);
+    }
+
     console.error(err.response?.data || err.message);
     res.status(500).json({ error: "Failed to fetch food data" });
   }
