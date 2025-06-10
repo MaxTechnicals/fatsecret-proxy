@@ -32,6 +32,27 @@ async function getAccessToken() {
   return cachedToken;
 }
 
+async function getSuggestions(token, query) {
+  try {
+    const searchRes = await axios.get("https://platform.fatsecret.com/rest/server.api", {
+      headers: { Authorization: `Bearer ${token}` },
+      params: {
+        method: "foods.search",
+        format: "json",
+        search_expression: query
+      }
+    });
+
+    const foods = searchRes.data.foods?.food;
+    if (!foods || foods.length === 0) return [];
+
+    return foods.map(f => f.food_name).slice(0, 5);
+  } catch (err) {
+    console.error("Suggestion fetch failed:", err.message);
+    return [];
+  }
+}
+
 app.get("/macros", async (req, res) => {
   const query = req.query.q;
   if (!query) return res.status(400).json({ error: "Missing query" });
@@ -76,42 +97,11 @@ app.get("/macros", async (req, res) => {
       carbs: parseFloat(nutrients.carbohydrate)
     });
 
-    } catch (err) {
-    try {
-      const token = await getAccessToken();
-      const suggestions = await getSuggestions(token, query);
-      if (suggestions.length > 0) {
-        return res.status(404).json({ error: "No exact match", suggestions });
-      }
-    } catch (suggestionError) {
-      console.error("Suggestion fetch failed:", suggestionError.message);
-    }
-
-    console.error(err.response?.data || err.message);
+  } catch (err) {
+    console.error("Unexpected error:", err.message);
     res.status(500).json({ error: "Failed to fetch food data" });
   }
 });
-
-async function getSuggestions(token, query) {
-  try {
-    const searchRes = await axios.get("https://platform.fatsecret.com/rest/server.api", {
-      headers: { Authorization: `Bearer ${token}` },
-      params: {
-        method: "foods.search",
-        format: "json",
-        search_expression: query
-      }
-    });
-
-    const foods = searchRes.data.foods?.food;
-    if (!foods || foods.length === 0) return [];
-
-    return foods.map(f => f.food_name).slice(0, 5);
-  } catch (err) {
-    console.error("Suggestion fetch failed:", err.message);
-    return [];
-  }
-}
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
