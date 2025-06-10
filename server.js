@@ -12,53 +12,31 @@ let tokenExpiresAt = 0;
 
 async function getAccessToken() {
   const now = Date.now();
+  if (cachedToken && now < tokenExpiresAt) return cachedToken;
 
-  if (cachedToken && now < tokenExpiresAt) {
-    return cachedToken;
-  }
-
-  const response = await axios.post("https://oauth.fatsecret.com/connect/token", new URLSearchParams({
-    grant_type: "client_credentials",
-    scope: "basic",
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET
-  }).toString(), {
-    headers: { "Content-Type": "application/x-www-form-urlencoded" }
-  });
+  const response = await axios.post("https://oauth.fatsecret.com/connect/token",
+    new URLSearchParams({
+      grant_type: "client_credentials",
+      scope: "basic",
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET
+    }).toString(),
+    { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+  );
 
   cachedToken = response.data.access_token;
   tokenExpiresAt = now + response.data.expires_in * 1000;
-
   return cachedToken;
 }
 
-async function getSuggestions(token, query) {
-  try {
-    const res = await axios.get("https://platform.fatsecret.com/rest/server.api", {
-      headers: { Authorization: `Bearer ${token}` },
-      params: {
-        method: "foods.search",
-        format: "json",
-        search_expression: query
-      }
-    });
-
-    const foods = res.data.foods?.food || [];
-    return foods.map(f => f.food_name).slice(0, 5);
-  } catch (err) {
-    console.error("Suggestion fetch failed:", err.message);
-    return [];
-  }
-}
-
-app.get("/macros", async (req, res) => {
+app.get("/search", async (req, res) => {
   const query = req.query.q;
   if (!query) return res.status(400).json({ error: "Missing query" });
 
   try {
     const token = await getAccessToken();
 
-    const searchRes = await axios.get("https://platform.fatsecret.com/rest/server.api", {
+    const response = await axios.get("https://platform.fatsecret.com/rest/server.api", {
       headers: { Authorization: `Bearer ${token}` },
       params: {
         method: "foods.search",
@@ -67,41 +45,52 @@ app.get("/macros", async (req, res) => {
       }
     });
 
-    const foods = searchRes.data.foods?.food;
-    if (!foods || foods.length === 0) {
-      return res.status(404).json({ error: "No match found", suggestions: [] });
-    }
+    const foods = response.data.foods?.food || [];
 
-    const foodId = foods[0].food_id;
-    const suggestions = foods.map(f => f.food_name).slice(0, 5);
+    const results = foods.slice(0, 10).map(f => ({
+      id: f.food_id,
+      name: f.food_name
+    }));
 
-    const detailRes = await axios.get("https://platform.fatsecret.com/rest/server.api", {
+    res.json({ matches: results });
+  } catch (err) {
+    console.error("Search failed:", err.message);
+    res.status(500).json({ error: "Failed to search foods" });
+  }
+});
+
+app.get("/macros", async (req, res) => {
+  const id = req.query.id;
+  if (!id) return res.status(400).json({ error: "Missing food_id" });
+
+  try {
+    const token = await getAccessToken();
+
+    const response = await axios.get("https://platform.fatsecret.com/rest/server.api", {
       headers: { Authorization: `Bearer ${token}` },
       params: {
         method: "food.get.v2",
         format: "json",
-        food_id: foodId
+        food_id: id
       }
     });
 
-    const servings = detailRes.data.food.servings?.serving;
+    const servings = response.data.food.servings?.serving;
     const nutrients = Array.isArray(servings) ? servings[0] : servings;
 
     if (!nutrients || !nutrients.calories) {
-      return res.status(404).json({ error: "No valid nutrition data", suggestions });
+      return res.status(404).json({ error: "No valid nutrition data" });
     }
 
-    return res.status(200).json({
+    res.json({
       calories: parseFloat(nutrients.calories),
       protein: parseFloat(nutrients.protein),
       fat: parseFloat(nutrients.fat),
-      carbs: parseFloat(nutrients.carbohydrate),
-      suggestions
+      carbs: parseFloat(nutrients.carbohydrate)
     });
-
   } catch (err) {
-    console.error("Unexpected error:", err.message);
-    return res.status(500).json({ error: "Failed to fetch food data" });
+    console.error("Macro fetch failed:", err.message);
+    res.status(500).json({ error: "Failed to fetch macro data" });
   }
 });
 
