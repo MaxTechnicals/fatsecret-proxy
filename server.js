@@ -47,7 +47,7 @@ app.get("/search", async (req, res) => {
 
     const foods = response.data.foods?.food || [];
 
-    const results = foods.slice(0, 10).map(f => ({
+    const results = foods.slice(0, 15).map(f => ({
       id: f.food_id,
       name: f.food_name
     }));
