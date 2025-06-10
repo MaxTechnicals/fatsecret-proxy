@@ -39,6 +39,7 @@ app.get("/macros", async (req, res) => {
   try {
     const token = await getAccessToken();
 
+    // Step 1: Search for food
     const searchRes = await axios.get("https://platform.fatsecret.com/rest/server.api", {
       headers: { Authorization: `Bearer ${token}` },
       params: {
@@ -48,12 +49,15 @@ app.get("/macros", async (req, res) => {
       }
     });
 
-    if (!searchRes.data.foods || !searchRes.data.foods.food || searchRes.data.foods.food.length === 0) {
-  return res.status(404).json({ error: "No food found for query: " + query });
-}
+    const foods = searchRes.data.foods?.food;
+    if (!foods || foods.length === 0) {
+      const suggestions = await getSuggestions(token, query);
+      return res.status(404).json({ error: "No exact match", suggestions });
+    }
 
-const foodId = searchRes.data.foods.food[0].food_id;
+    const foodId = foods[0].food_id;
 
+    // Step 2: Get detailed nutrition
     const detailRes = await axios.get("https://platform.fatsecret.com/rest/server.api", {
       headers: { Authorization: `Bearer ${token}` },
       params: {
@@ -77,6 +81,27 @@ const foodId = searchRes.data.foods.food[0].food_id;
     res.status(500).json({ error: "Failed to fetch food data" });
   }
 });
+
+async function getSuggestions(token, query) {
+  try {
+    const searchRes = await axios.get("https://platform.fatsecret.com/rest/server.api", {
+      headers: { Authorization: `Bearer ${token}` },
+      params: {
+        method: "foods.search",
+        format: "json",
+        search_expression: query
+      }
+    });
+
+    const foods = searchRes.data.foods?.food;
+    if (!foods || foods.length === 0) return [];
+
+    return foods.map(f => f.food_name).slice(0, 5);
+  } catch (err) {
+    console.error("Suggestion fetch failed:", err.message);
+    return [];
+  }
+}
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
