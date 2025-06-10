@@ -34,7 +34,7 @@ async function getAccessToken() {
 
 async function getSuggestions(token, query) {
   try {
-    const searchRes = await axios.get("https://platform.fatsecret.com/rest/server.api", {
+    const res = await axios.get("https://platform.fatsecret.com/rest/server.api", {
       headers: { Authorization: `Bearer ${token}` },
       params: {
         method: "foods.search",
@@ -43,9 +43,7 @@ async function getSuggestions(token, query) {
       }
     });
 
-    const foods = searchRes.data.foods?.food;
-    if (!foods || foods.length === 0) return [];
-
+    const foods = res.data.foods?.food || [];
     return foods.map(f => f.food_name).slice(0, 5);
   } catch (err) {
     console.error("Suggestion fetch failed:", err.message);
@@ -60,7 +58,6 @@ app.get("/macros", async (req, res) => {
   try {
     const token = await getAccessToken();
 
-    // Step 1: Search for food
     const searchRes = await axios.get("https://platform.fatsecret.com/rest/server.api", {
       headers: { Authorization: `Bearer ${token}` },
       params: {
@@ -72,13 +69,12 @@ app.get("/macros", async (req, res) => {
 
     const foods = searchRes.data.foods?.food;
     if (!foods || foods.length === 0) {
-      const suggestions = await getSuggestions(token, query);
-      return res.status(404).json({ error: "No exact match", suggestions });
+      return res.status(404).json({ error: "No match found", suggestions: [] });
     }
 
     const foodId = foods[0].food_id;
+    const suggestions = foods.map(f => f.food_name).slice(0, 5);
 
-    // Step 2: Get detailed nutrition
     const detailRes = await axios.get("https://platform.fatsecret.com/rest/server.api", {
       headers: { Authorization: `Bearer ${token}` },
       params: {
@@ -89,23 +85,23 @@ app.get("/macros", async (req, res) => {
     });
 
     const servings = detailRes.data.food.servings?.serving;
-const nutrients = Array.isArray(servings) ? servings[0] : servings;
+    const nutrients = Array.isArray(servings) ? servings[0] : servings;
 
-if (!nutrients || !nutrients.calories) {
-  const suggestions = await getSuggestions(token, query);
-  return res.status(404).json({ error: "No exact match", suggestions });
-}
+    if (!nutrients || !nutrients.calories) {
+      return res.status(404).json({ error: "No valid nutrition data", suggestions });
+    }
 
-res.json({
-  calories: parseFloat(nutrients.calories),
-  protein: parseFloat(nutrients.protein),
-  fat: parseFloat(nutrients.fat),
-  carbs: parseFloat(nutrients.carbohydrate)
-});
+    return res.status(200).json({
+      calories: parseFloat(nutrients.calories),
+      protein: parseFloat(nutrients.protein),
+      fat: parseFloat(nutrients.fat),
+      carbs: parseFloat(nutrients.carbohydrate),
+      suggestions
+    });
 
   } catch (err) {
     console.error("Unexpected error:", err.message);
-    res.status(500).json({ error: "Failed to fetch food data" });
+    return res.status(500).json({ error: "Failed to fetch food data" });
   }
 });
 
