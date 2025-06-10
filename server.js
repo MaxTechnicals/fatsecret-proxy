@@ -88,14 +88,20 @@ app.get("/macros", async (req, res) => {
       }
     });
 
-    const nutrients = detailRes.data.food.servings.serving[0];
+    const servings = detailRes.data.food.servings?.serving;
+const nutrients = Array.isArray(servings) ? servings[0] : servings;
 
-    res.json({
-      calories: parseFloat(nutrients.calories),
-      protein: parseFloat(nutrients.protein),
-      fat: parseFloat(nutrients.fat),
-      carbs: parseFloat(nutrients.carbohydrate)
-    });
+if (!nutrients || !nutrients.calories) {
+  const suggestions = await getSuggestions(token, query);
+  return res.status(404).json({ error: "No exact match", suggestions });
+}
+
+res.json({
+  calories: parseFloat(nutrients.calories),
+  protein: parseFloat(nutrients.protein),
+  fat: parseFloat(nutrients.fat),
+  carbs: parseFloat(nutrients.carbohydrate)
+});
 
   } catch (err) {
     console.error("Unexpected error:", err.message);
